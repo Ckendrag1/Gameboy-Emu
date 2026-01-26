@@ -5,7 +5,10 @@ Handles the complete memory map of the Game Boy
 
 class Memory:
     """Game Boy memory management (64KB address space)"""
-    def __init__(self):
+    def __init__(self, interrupts=None, input_handler=None):
+        self.interrupts = interrupts
+        self.input_handler = input_handler
+        
         # Memory map
         self.rom = [0] * 0x8000      # 0x0000-0x7FFF: ROM (32KB)
         self.vram = [0] * 0x2000     # 0x8000-0x9FFF: Video RAM (8KB)
@@ -35,10 +38,20 @@ class Memory:
         elif address < 0xFF00:
             return 0  # Unusable memory
         elif address < 0xFF80:
+            # I/O registers
+            if address == 0xFF00 and self.input_handler:
+                # P1 - Joypad register
+                return self.input_handler.read_p1()
+            elif address == 0xFF0F and self.interrupts:
+                # IF - Interrupt Flag
+                return self.interrupts.get_interrupt_flag()
             return self.io[address - 0xFF00]
         elif address < 0xFFFF:
             return self.hram[address - 0xFF80]
         else:
+            # 0xFFFF - IE register
+            if self.interrupts:
+                return self.interrupts.get_interrupt_enable()
             return self.ie
     
     def write_byte(self, address, value):
@@ -62,10 +75,20 @@ class Memory:
         elif address < 0xFF00:
             pass  # Unusable memory
         elif address < 0xFF80:
+            # I/O registers
+            if address == 0xFF00 and self.input_handler:
+                # P1 - Joypad register
+                self.input_handler.write_p1(value)
+            elif address == 0xFF0F and self.interrupts:
+                # IF - Interrupt Flag
+                self.interrupts.set_interrupt_flag(value)
             self.io[address - 0xFF00] = value
         elif address < 0xFFFF:
             self.hram[address - 0xFF80] = value
         else:
+            # 0xFFFF - IE register
+            if self.interrupts:
+                self.interrupts.set_interrupt_enable(value)
             self.ie = value
     
     def read_word(self, address):

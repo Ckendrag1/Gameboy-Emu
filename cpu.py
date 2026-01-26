@@ -278,6 +278,10 @@ class CPU:
             self.cycles += 4
         
         # 0x2X
+        elif opcode == 0x10:  # STOP
+            self.stopped = True
+            self.cycles += 4
+        
         elif opcode == 0x20:  # JR NZ,n
             offset = self.fetch_byte()
             if not self.get_flag(self.FLAG_Z):
@@ -312,6 +316,23 @@ class CPU:
         elif opcode == 0x26:  # LD H,n
             self.h = self.fetch_byte()
             self.cycles += 8
+        
+        elif opcode == 0x27:  # DAA (Decimal Adjust Accumulator)
+            # This is complex - adjusts A after BCD arithmetic
+            if not self.get_flag(self.FLAG_N):  # After addition
+                if self.get_flag(self.FLAG_C) or self.a > 0x99:
+                    self.a = (self.a + 0x60) & 0xFF
+                    self.set_flag(self.FLAG_C, 1)
+                if self.get_flag(self.FLAG_H) or (self.a & 0x0F) > 0x09:
+                    self.a = (self.a + 0x06) & 0xFF
+            else:  # After subtraction
+                if self.get_flag(self.FLAG_C):
+                    self.a = (self.a - 0x60) & 0xFF
+                if self.get_flag(self.FLAG_H):
+                    self.a = (self.a - 0x06) & 0xFF
+            self.set_flag(self.FLAG_Z, self.a == 0)
+            self.set_flag(self.FLAG_H, 0)
+            self.cycles += 4
         
         elif opcode == 0x28:  # JR Z,n
             offset = self.fetch_byte()
@@ -451,7 +472,7 @@ class CPU:
             else:
                 self.ld_r_r(opcode)
         
-        # 0x80-0x8F - ADD/ADC
+        # 0x80-0xBF - Arithmetic and Logic
         elif 0x80 <= opcode <= 0x87:  # ADD A,r
             self.add_a(self.get_reg8(opcode & 0x07))
             self.cycles += 4 if (opcode & 0x07) != 6 else 8
@@ -460,7 +481,6 @@ class CPU:
             self.adc_a(self.get_reg8(opcode & 0x07))
             self.cycles += 4 if (opcode & 0x07) != 6 else 8
         
-        # 0x90-0x9F - SUB/SBC
         elif 0x90 <= opcode <= 0x97:  # SUB r
             self.sub_a(self.get_reg8(opcode & 0x07))
             self.cycles += 4 if (opcode & 0x07) != 6 else 8
@@ -469,7 +489,6 @@ class CPU:
             self.sbc_a(self.get_reg8(opcode & 0x07))
             self.cycles += 4 if (opcode & 0x07) != 6 else 8
         
-        # 0xA0-0xAF - AND/XOR
         elif 0xA0 <= opcode <= 0xA7:  # AND r
             self.and_a(self.get_reg8(opcode & 0x07))
             self.cycles += 4 if (opcode & 0x07) != 6 else 8
@@ -478,7 +497,6 @@ class CPU:
             self.xor_a(self.get_reg8(opcode & 0x07))
             self.cycles += 4 if (opcode & 0x07) != 6 else 8
         
-        # 0xB0-0xBF - OR/CP
         elif 0xB0 <= opcode <= 0xB7:  # OR r
             self.or_a(self.get_reg8(opcode & 0x07))
             self.cycles += 4 if (opcode & 0x07) != 6 else 8
@@ -487,7 +505,7 @@ class CPU:
             self.cp_a(self.get_reg8(opcode & 0x07))
             self.cycles += 4 if (opcode & 0x07) != 6 else 8
         
-        # 0xCX
+        # 0xCX-0xFX - Control flow, stack ops, and misc
         elif opcode == 0xC0:  # RET NZ
             if not self.get_flag(self.FLAG_Z):
                 self.pc = self.pop_word()
@@ -527,6 +545,11 @@ class CPU:
         elif opcode == 0xC6:  # ADD A,n
             self.add_a(self.fetch_byte())
             self.cycles += 8
+        
+        elif opcode == 0xC7:  # RST 00H
+            self.push_word(self.pc)
+            self.pc = 0x0000
+            self.cycles += 16
         
         elif opcode == 0xC8:  # RET Z
             if self.get_flag(self.FLAG_Z):
@@ -570,6 +593,11 @@ class CPU:
             self.adc_a(self.fetch_byte())
             self.cycles += 8
         
+        elif opcode == 0xCF:  # RST 08H
+            self.push_word(self.pc)
+            self.pc = 0x0008
+            self.cycles += 16
+        
         # 0xDX
         elif opcode == 0xD0:  # RET NC
             if not self.get_flag(self.FLAG_C):
@@ -590,6 +618,10 @@ class CPU:
             else:
                 self.cycles += 12
         
+        elif opcode == 0xD3:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xD3")
+            self.cycles += 4
+        
         elif opcode == 0xD4:  # CALL NC,nn
             addr = self.fetch_word()
             if not self.get_flag(self.FLAG_C):
@@ -606,6 +638,11 @@ class CPU:
         elif opcode == 0xD6:  # SUB n
             self.sub_a(self.fetch_byte())
             self.cycles += 8
+        
+        elif opcode == 0xD7:  # RST 10H
+            self.push_word(self.pc)
+            self.pc = 0x0010
+            self.cycles += 16
         
         elif opcode == 0xD8:  # RET C
             if self.get_flag(self.FLAG_C):
@@ -627,6 +664,10 @@ class CPU:
             else:
                 self.cycles += 12
         
+        elif opcode == 0xDB:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xDB")
+            self.cycles += 4
+        
         elif opcode == 0xDC:  # CALL C,nn
             addr = self.fetch_word()
             if self.get_flag(self.FLAG_C):
@@ -636,9 +677,18 @@ class CPU:
             else:
                 self.cycles += 12
         
+        elif opcode == 0xDD:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xDD")
+            self.cycles += 4
+        
         elif opcode == 0xDE:  # SBC A,n
             self.sbc_a(self.fetch_byte())
             self.cycles += 8
+        
+        elif opcode == 0xDF:  # RST 18H
+            self.push_word(self.pc)
+            self.pc = 0x0018
+            self.cycles += 16
         
         # 0xEX
         elif opcode == 0xE0:  # LDH (n),A
@@ -653,6 +703,14 @@ class CPU:
             self.memory.write_byte(0xFF00 + self.c, self.a)
             self.cycles += 8
         
+        elif opcode == 0xE3:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xE3")
+            self.cycles += 4
+        
+        elif opcode == 0xE4:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xE4")
+            self.cycles += 4
+        
         elif opcode == 0xE5:  # PUSH HL
             self.push_word(self.get_hl())
             self.cycles += 16
@@ -660,6 +718,23 @@ class CPU:
         elif opcode == 0xE6:  # AND n
             self.and_a(self.fetch_byte())
             self.cycles += 8
+        
+        elif opcode == 0xE7:  # RST 20H
+            self.push_word(self.pc)
+            self.pc = 0x0020
+            self.cycles += 16
+        
+        elif opcode == 0xE8:  # ADD SP,n
+            offset = self.fetch_byte()
+            if offset > 127:
+                offset = offset - 256
+            result = self.sp + offset
+            self.set_flag(self.FLAG_Z, 0)
+            self.set_flag(self.FLAG_N, 0)
+            self.set_flag(self.FLAG_H, ((self.sp & 0x0F) + (offset & 0x0F)) > 0x0F)
+            self.set_flag(self.FLAG_C, ((self.sp & 0xFF) + (offset & 0xFF)) > 0xFF)
+            self.sp = result & 0xFFFF
+            self.cycles += 16
         
         elif opcode == 0xE9:  # JP (HL)
             self.pc = self.get_hl()
@@ -669,9 +744,26 @@ class CPU:
             self.memory.write_byte(self.fetch_word(), self.a)
             self.cycles += 16
         
+        elif opcode == 0xEB:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xEB")
+            self.cycles += 4
+        
+        elif opcode == 0xEC:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xEC")
+            self.cycles += 4
+        
+        elif opcode == 0xED:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xED")
+            self.cycles += 4
+        
         elif opcode == 0xEE:  # XOR n
             self.xor_a(self.fetch_byte())
             self.cycles += 8
+        
+        elif opcode == 0xEF:  # RST 28H
+            self.push_word(self.pc)
+            self.pc = 0x0028
+            self.cycles += 16
         
         # 0xFX
         elif opcode == 0xF0:  # LDH A,(n)
@@ -690,12 +782,37 @@ class CPU:
             self.ime = False
             self.cycles += 4
         
+        elif opcode == 0xF4:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xF4")
+            self.cycles += 4
+        
         elif opcode == 0xF5:  # PUSH AF
             self.push_word(self.get_af())
             self.cycles += 16
         
         elif opcode == 0xF6:  # OR n
             self.or_a(self.fetch_byte())
+            self.cycles += 8
+        
+        elif opcode == 0xF7:  # RST 30H
+            self.push_word(self.pc)
+            self.pc = 0x0030
+            self.cycles += 16
+        
+        elif opcode == 0xF8:  # LD HL,SP+n
+            offset = self.fetch_byte()
+            if offset > 127:
+                offset = offset - 256
+            result = self.sp + offset
+            self.set_flag(self.FLAG_Z, 0)
+            self.set_flag(self.FLAG_N, 0)
+            self.set_flag(self.FLAG_H, ((self.sp & 0x0F) + (offset & 0x0F)) > 0x0F)
+            self.set_flag(self.FLAG_C, ((self.sp & 0xFF) + (offset & 0xFF)) > 0xFF)
+            self.set_hl(result & 0xFFFF)
+            self.cycles += 12
+        
+        elif opcode == 0xF9:  # LD SP,HL
+            self.sp = self.get_hl()
             self.cycles += 8
         
         elif opcode == 0xFA:  # LD A,(nn)
@@ -706,9 +823,22 @@ class CPU:
             self.ime = True
             self.cycles += 4
         
+        elif opcode == 0xFC:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xFC")
+            self.cycles += 4
+        
+        elif opcode == 0xFD:  # Invalid opcode
+            print(f"[CPU] Invalid opcode: 0xFD")
+            self.cycles += 4
+        
         elif opcode == 0xFE:  # CP n
             self.cp_a(self.fetch_byte())
             self.cycles += 8
+        
+        elif opcode == 0xFF:  # RST 38H
+            self.push_word(self.pc)
+            self.pc = 0x0038
+            self.cycles += 16
         
         else:
             print(f"[CPU] Unimplemented opcode: 0x{opcode:02X} at PC: 0x{self.pc-1:04X}")
