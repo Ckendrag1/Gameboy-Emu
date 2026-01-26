@@ -9,6 +9,7 @@ from cpu import CPU
 from ppu import PPU, SCREEN_WIDTH, SCREEN_HEIGHT
 from input import Input
 from cartridge import Cartridge
+from interrupts import Interrupts
 
 # Display scale factor
 SCALE = 3
@@ -34,10 +35,13 @@ class GameBoy:
         
         # Initialize components
         self.cartridge = Cartridge()
-        self.memory = Memory()
+        self.interrupts = Interrupts(None)  # Temporary, will set memory next
+        self.input = Input(None)  # Temporary, will set memory next
+        self.memory = Memory(self.interrupts, self.input)
+        self.interrupts.memory = self.memory  # Now connect them
+        self.input.memory = self.memory  # Connect input too
         self.cpu = CPU(self.memory)
-        self.ppu = PPU(self.memory)
-        self.input = Input()
+        self.ppu = PPU(self.memory, self.interrupts)
         
         # Emulator state
         self.running = False
@@ -53,8 +57,19 @@ class GameBoy:
             # Load ROM data into memory
             rom_data = self.cartridge.get_rom_data()
             self.memory.load_rom(rom_data)
+            
+            # Connect interrupt registers to memory
+            self.setup_interrupt_registers()
+            
             return True
         return False
+    
+    def setup_interrupt_registers(self):
+        """Wire interrupt registers to memory I/O"""
+        # IE register is at 0xFFFF (handled separately in memory)
+        # IF register is at 0xFF0F
+        # These will be read/written through memory.io
+        pass
     
     def run(self):
         """Main emulation loop"""
@@ -103,8 +118,10 @@ class GameBoy:
             # Update PPU
             self.ppu.step(cycles_executed)
             
+            # Handle interrupts
+            self.interrupts.handle_interrupts(self.cpu)
+            
             # TODO: Update timers
-            # TODO: Handle interrupts
             
             frame_cycles += cycles_executed
     
@@ -148,6 +165,7 @@ class GameBoy:
     def reset(self):
         """Reset the emulator"""
         print("[GameBoy] Resetting...")
+        self.interrupts = Interrupts(self.memory)
         self.cpu = CPU(self.memory)
-        self.ppu = PPU(self.memory)
+        self.ppu = PPU(self.memory, self.interrupts)
         self.input.reset()
