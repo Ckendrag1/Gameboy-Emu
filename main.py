@@ -22,6 +22,7 @@ def print_controls():
     print("")
     print("Emulator Controls:")
     print("  P      - Pause/Resume")
+    print("  M      - Toggle Audio (Mute/Unmute)")
     print("  ESC    - Quit")
     print("  F11    - Toggle Fullscreen (if supported)")
     print("="*50 + "\n")
@@ -33,16 +34,16 @@ def main():
     print("=" * 50)
     
     rom_file = None
+    enable_audio = True
     
-    # Check if ROM file was provided as command line argument
+    # Check command line arguments
     if len(sys.argv) > 1:
-        rom_file = sys.argv[1]
-        
-        # Check if file exists
-        if not os.path.exists(rom_file):
-            print(f"Error: ROM file not found: {rom_file}")
-            print("\nLaunching ROM browser instead...")
-            rom_file = None
+        for arg in sys.argv[1:]:
+            if arg == "--no-audio" or arg == "-na":
+                enable_audio = False
+                print("Audio disabled via command line")
+            elif os.path.exists(arg):
+                rom_file = arg
     
     # If no ROM provided, launch browser
     if rom_file is None:
@@ -54,13 +55,15 @@ def main():
             return
     
     # Create emulator instance
-    emulator = GameBoy()
+    emulator = GameBoy(enable_audio=enable_audio)
     
     # Load ROM
     print(f"\nLoading ROM: {rom_file}")
     if emulator.load_rom(rom_file):
         print_controls()
         print("Starting emulation...")
+        if not enable_audio:
+            print("⚠️  Audio is DISABLED")
         print("Have fun!\n")
         emulator.run()
     else:
