@@ -9,6 +9,7 @@ from cpu import CPU
 from ppu import PPU, SCREEN_WIDTH, SCREEN_HEIGHT
 from input import Input
 from cartridge import Cartridge
+from interrupts import Interrupts
 
 # Display scale factor
 SCALE = 3
@@ -34,10 +35,13 @@ class GameBoy:
         
         # Initialize components
         self.cartridge = Cartridge()
-        self.memory = Memory()
+        self.interrupts = Interrupts(None)  # Temporary, will set memory next
+        self.input = Input(None)  # Temporary, will set memory next
+        self.memory = Memory(self.interrupts, self.input)
+        self.interrupts.memory = self.memory  # Now connect them
+        self.input.memory = self.memory  # Connect input too
         self.cpu = CPU(self.memory)
-        self.ppu = PPU(self.memory)
-        self.input = Input()
+        self.ppu = PPU(self.memory, self.interrupts)
         
         # Emulator state
         self.running = False
@@ -53,22 +57,25 @@ class GameBoy:
             # Load ROM data into memory
             rom_data = self.cartridge.get_rom_data()
             self.memory.load_rom(rom_data)
+            
+            # Connect interrupt registers to memory
+            self.setup_interrupt_registers()
+            
             return True
         return False
+    
+    def setup_interrupt_registers(self):
+        """Wire interrupt registers to memory I/O"""
+        # IE register is at 0xFFFF (handled separately in memory)
+        # IF register is at 0xFF0F
+        # These will be read/written through memory.io
+        pass
     
     def run(self):
         """Main emulation loop"""
         self.running = True
         
-        print("[GameBoy] Starting emulator...")
-        print("[GameBoy] Controls:")
-        print("  Arrow Keys - D-Pad")
-        print("  Z - A Button")
-        print("  X - B Button")
-        print("  Enter - Start")
-        print("  Right Shift - Select")
-        print("  ESC - Quit")
-        print("  P - Pause")
+        print("[GameBoy] Emulator running...")
         
         while self.running:
             self.handle_events()
@@ -80,10 +87,11 @@ class GameBoy:
             # Cap at 60 FPS
             self.clock.tick(self.fps)
             
-            # Update window title with FPS
+            # Update window title with FPS and info
             if self.frame_count % 60 == 0:
                 fps = self.clock.get_fps()
-                pygame.display.set_caption(f"Game Boy Emulator - {fps:.1f} FPS")
+                status = "[PAUSED]" if self.paused else ""
+                pygame.display.set_caption(f"Game Boy Emulator - {fps:.1f} FPS {status}")
             
             self.frame_count += 1
     
@@ -103,8 +111,10 @@ class GameBoy:
             # Update PPU
             self.ppu.step(cycles_executed)
             
+            # Handle interrupts
+            self.interrupts.handle_interrupts(self.cpu)
+            
             # TODO: Update timers
-            # TODO: Handle interrupts
             
             frame_cycles += cycles_executed
     
@@ -148,6 +158,7 @@ class GameBoy:
     def reset(self):
         """Reset the emulator"""
         print("[GameBoy] Resetting...")
+        self.interrupts = Interrupts(self.memory)
         self.cpu = CPU(self.memory)
-        self.ppu = PPU(self.memory)
+        self.ppu = PPU(self.memory, self.interrupts)
         self.input.reset()
